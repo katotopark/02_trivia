@@ -9,6 +9,14 @@ from models import setup_db, db, Question, Category
 QUESTIONS_PER_PAGE = 10
 
 
+class ErrorWithCode(Exception):
+    def __init__(self, code):
+        self.code = code
+
+    def __str__(self):
+        return repr(self.code)
+
+
 def paginate(list, page, perPage):
     start = (page - 1) * perPage
     end = start + perPage
@@ -51,11 +59,11 @@ def create_app(test_config=None):
             categories = Category.query.order_by(Category.id).all()
             categories_formatted = [category.format() for category in categories]
             if len(categories) == 0:
-                raise Exception()
+                raise ErrorWithCode(404)
             return jsonify({"categories": categories_formatted, "success": True})
-        except:
+        except ErrorWithCode as e:
             db.session.rollback()
-            abort(404)
+            abort(e.code)
         finally:
             db.session.close()
 
@@ -78,7 +86,7 @@ def create_app(test_config=None):
             questions = Question.query.all()
             categories = Category.query.all()
             if len(questions) == 0 or len(categories) == 0:
-                raise Exception()
+                raise ErrorWithCode(404)
             questions_formatted = [question.format() for question in questions]
             categories_formatted = [category.format() for category in categories]
             page = request.args.get("page", 1, type=int)
@@ -95,9 +103,9 @@ def create_app(test_config=None):
                     "total_questions": total_questions,
                 }
             )
-        except:
+        except ErrorWithCode as e:
             db.session.rollback()
-            abort(404)
+            abort(e.code)
         finally:
             db.session.close()
 
@@ -114,12 +122,12 @@ def create_app(test_config=None):
         try:
             question = Question.query.filter_by(id=question_id).one_or_none()
             if question is None:
-                raise Exception()
+                raise ErrorWithCode(404)
             question.delete()
             return jsonify({"question_id": question.id, "success": True})
-        except:
+        except ErrorWithCode as e:
             db.session.rollback()
-            abort(404)
+            abort(e.code)
         finally:
             db.session.close()
 
@@ -134,6 +142,34 @@ def create_app(test_config=None):
   of the questions list in the "List" tab.  
   """
 
+    @app.route("/questions", methods=["POST"])
+    def insert_question():
+        data = request.get_json()
+        if not data:
+            raise ErrorWithCode(422)
+        else:
+            new_question = Question(
+                question=data.get("question"),
+                answer=data.get("answer"),
+                category=data.get("category"),
+                difficulty=data.get("difficulty"),
+            )
+        try:
+            new_question.insert()
+            questions = Question.query.all()
+            return jsonify(
+                {
+                    "question": new_question.format(),
+                    "success": True,
+                    "total_questions": len(questions),
+                }
+            )
+        except ErrorWithCode as e:
+            db.session.rollback()
+            abort(e.code)
+        finally:
+            db.session.close()
+
     """
   @TODO: 
   Create a POST endpoint to get questions based on a search term. 
@@ -144,6 +180,31 @@ def create_app(test_config=None):
   only question that include that string within their question. 
   Try using the word "title" to start. 
   """
+
+    @app.route("/questions/search", methods=["POST"])
+    def search_question():
+        data = request.get_json()
+        search_term = data.get("search_term")
+        if search_term is None:
+            raise ErrorWithCode(400)
+        try:
+            questions = Question.query.filter(
+                Question.question.ilike(f"%{search_term}%")
+            ).all()
+            questions_formatted = [question.format() for question in questions]
+            return jsonify(
+                {
+                    "current_category": None,
+                    "questions": questions_formatted,
+                    "success": True,
+                    "total_questions": len(questions),
+                }
+            )
+        except ErrorWithCode as e:
+            db.session.rollback()
+            abort(e.code)
+        finally:
+            db.session.close()
 
     """
   @TODO: 
@@ -160,7 +221,7 @@ def create_app(test_config=None):
             category = Category.query.filter_by(id=category_id).one_or_none()
             questions = Question.query.filter_by(category=category_id).all()
             if category is None or len(questions) == 0:
-                raise Exception()
+                raise ErrorWithCode(404)
             category_formatted = category.format()
             questions_formatted = [question.format() for question in questions]
             page = request.args.get("page", 1, type=int)
@@ -176,6 +237,48 @@ def create_app(test_config=None):
                     "total_questions": total_questions,
                 }
             )
+        except ErrorWithCode as e:
+            db.session.rollback()
+            abort(e.code)
+        finally:
+            db.session.close()
+
+    # """
+    #   @TODO:
+    #   Create a POST endpoint to get questions to play the quiz.
+    #   This endpoint should take category and previous question parameters
+    #   and return a random questions within the given category,
+    #   if provided, and that is not one of the previous questions.
+
+    #   TEST: In the "Play" tab, after a user selects "All" or a category,
+    #   one question at a time is displayed, the user is allowed to answer
+    #   and shown whether they were correct or not.
+    # """
+
+    @app.route("/quizzes", methods=["POST"])
+    def get_questions_by_category():
+        data = request.get_json()
+        if not data:
+            raise ErrorWithCode(400)
+        else:
+            previous_questions = data.get("previous_questions", [])
+            quiz_category = data.get("category", {})
+        try:
+            if quiz_category["id"] == 0:
+                questions = Question.query.filter(
+                    Question.id.notin_(previous_questions)
+                ).all()
+            else:
+                questions = (
+                    Question.query.filter(Question.category == quiz_category["id"])
+                    .filter(Question.id.notin_(previous_questions))
+                    .all()
+                )
+            if len(questions) > 0:
+                new_question = questions[random.randrange(0, len(questions))].format()
+                return jsonify({"question": new_question, "success": True})
+            else:
+                return jsonify({"question": None, "success": True})
         except:
             db.session.rollback()
             abort(404)
@@ -184,20 +287,54 @@ def create_app(test_config=None):
 
     """
       @TODO: 
-      Create a POST endpoint to get questions to play the quiz. 
-      This endpoint should take category and previous question parameters 
-      and return a random questions within the given category, 
-      if provided, and that is not one of the previous questions. 
-
-      TEST: In the "Play" tab, after a user selects "All" or a category,
-      one question at a time is displayed, the user is allowed to answer
-      and shown whether they were correct or not. 
-      """
-
-    """
-      @TODO: 
       Create error handlers for all expected errors 
       including 404 and 422. 
     """
+
+    @app.errorhandler(400)
+    def bad_request(error):
+        return (
+            jsonify(
+                {
+                    "error": error.code,
+                    "message": "bad request",
+                    "success": False,
+                }
+            ),
+            400,
+        )
+
+    @app.errorhandler(404)
+    def not_found(error):
+        return (
+            jsonify(
+                {
+                    "error": error.code,
+                    "message": "resource not found",
+                    "success": False,
+                }
+            ),
+            404,
+        )
+
+    @app.errorhandler(405)
+    def not_allowed(error):
+        return (
+            jsonify(
+                {
+                    "error": error.code,
+                    "message": "method not allowed",
+                    "success": False,
+                }
+            ),
+            405,
+        )
+
+    @app.errorhandler(422)
+    def unprocessable(error):
+        return (
+            jsonify({"error": error.code, "message": "unprocessable", success: False}),
+            422,
+        )
 
     return app
