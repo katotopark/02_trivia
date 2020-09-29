@@ -135,8 +135,7 @@ class QuestionView extends Component {
 		if (categories) {
 			const { type } = categories.find((category) => category.id === id)
 			return type
-		}
-		return
+		} else return
 	}
 
 	render() {
@@ -154,12 +153,7 @@ class QuestionView extends Component {
 					<ul>
 						{categories &&
 							categories.map(({ id, type }) => (
-								<li
-									key={id}
-									onClick={() => {
-										this.getByCategory(id)
-									}}
-								>
+								<li key={id} onClick={() => this.getByCategory(id)}>
 									{type}
 									<img className='category' src={`${type}.svg`} />
 								</li>
