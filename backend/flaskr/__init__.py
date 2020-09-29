@@ -243,17 +243,17 @@ def create_app(test_config=None):
         finally:
             db.session.close()
 
-    # """
-    #   @TODO:
-    #   Create a POST endpoint to get questions to play the quiz.
-    #   This endpoint should take category and previous question parameters
-    #   and return a random questions within the given category,
-    #   if provided, and that is not one of the previous questions.
+    """
+      @TODO:
+      Create a POST endpoint to get questions to play the quiz.
+      This endpoint should take category and previous question parameters
+      and return a random questions within the given category,
+      if provided, and that is not one of the previous questions.
 
-    #   TEST: In the "Play" tab, after a user selects "All" or a category,
-    #   one question at a time is displayed, the user is allowed to answer
-    #   and shown whether they were correct or not.
-    # """
+      TEST: In the "Play" tab, after a user selects "All" or a category,
+      one question at a time is displayed, the user is allowed to answer
+      and shown whether they were correct or not.
+    """
 
     @app.route("/quizzes", methods=["POST"])
     def get_questions_by_category():
@@ -335,6 +335,19 @@ def create_app(test_config=None):
         return (
             jsonify({"error": error.code, "message": "unprocessable", success: False}),
             422,
+        )
+
+    @app.errorhandler(500)
+    def internal_server_error(error):
+        return (
+            jsonify(
+                {
+                    "error": error.code,
+                    "message": "internal server error",
+                    success: False,
+                }
+            ),
+            500,
         )
 
     return app

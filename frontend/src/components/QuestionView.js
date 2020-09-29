@@ -9,40 +9,49 @@ class QuestionView extends Component {
 	constructor() {
 		super()
 		this.state = {
-			questions: [],
-			page: 1,
-			totalQuestions: 0,
-			categories: [],
+			categories: {},
 			currentCategory: null,
+			page: 1,
+			questions: [],
+			totalQuestions: 0,
 		}
 	}
 
 	componentDidMount() {
 		this.getQuestions()
 	}
+
 	componentDidUpdate(_, prevState) {
-		console.log(prevState.page, this.state.page)
 		if (prevState.page !== this.state.page) this.getQuestions()
 	}
 
-	getQuestions = () => {
-		$.ajax({
-			url: `/questions?page=${this.state.page}`, //TODO: update request URL
-			type: 'GET',
-			success: (result) => {
-				this.setState({
-					questions: result.questions,
-					totalQuestions: result.total_questions,
-					categories: result.categories,
-					currentCategory: result.current_category,
-				})
-				return
-			},
-			error: (error) => {
-				alert('Unable to load questions. Please try your request again')
-				return
-			},
-		})
+	getQuestions = async () => {
+		try {
+			const {
+				categories,
+				current_category,
+				questions,
+				total_questions,
+			} = await $.ajax({
+				url: `/questions?page=${this.state.page}`,
+				type: 'GET',
+			})
+			this.setState({
+				categories: this.mapCategories(categories),
+				currentCategory: current_category,
+				questions,
+				totalQuestions: total_questions,
+			})
+		} catch (error) {
+			alert('Unable to load questions. Please try your request again')
+		}
+	}
+
+	mapCategories = (categories) => {
+		return categories.reduce((acc, { id, type }) => {
+			acc[id] = type
+			return acc
+		}, {})
 	}
 
 	selectPage(num) {
@@ -70,7 +79,7 @@ class QuestionView extends Component {
 
 	getByCategory = (id) => {
 		$.ajax({
-			url: `/categories/${id}/questions`, //TODO: update request URL
+			url: `/categories/${id}/questions`,
 			type: 'GET',
 			success: (result) => {
 				this.setState({
@@ -89,7 +98,7 @@ class QuestionView extends Component {
 
 	submitSearch = (searchTerm) => {
 		$.ajax({
-			url: '/questions/search', //TODO: update request URL
+			url: '/questions/search',
 			type: 'POST',
 			dataType: 'json',
 			contentType: 'application/json',
@@ -117,7 +126,7 @@ class QuestionView extends Component {
 		if (action === 'DELETE') {
 			if (window.confirm('are you sure you want to delete the question?')) {
 				$.ajax({
-					url: `/questions/${id}`, //TODO: update request URL
+					url: `/questions/${id}`,
 					type: 'DELETE',
 					success: (result) => {
 						this.getQuestions()
@@ -129,13 +138,6 @@ class QuestionView extends Component {
 				})
 			}
 		}
-	}
-
-	getCategoryType = (categories, id) => {
-		if (categories) {
-			const { type } = categories.find((category) => category.id === id)
-			return type
-		} else return
 	}
 
 	render() {
@@ -151,13 +153,12 @@ class QuestionView extends Component {
 						Categories
 					</h2>
 					<ul>
-						{categories &&
-							categories.map(({ id, type }) => (
-								<li key={id} onClick={() => this.getByCategory(id)}>
-									{type}
-									<img className='category' src={`${type}.svg`} />
-								</li>
-							))}
+						{Object.keys(categories).map((id) => (
+							<li key={id} onClick={() => this.getByCategory(id)}>
+								{categories[id]}
+								<img className='category' src={`${categories[id]}.svg`} />
+							</li>
+						))}
 					</ul>
 					<Search submitSearch={this.submitSearch} />
 				</div>
@@ -169,7 +170,7 @@ class QuestionView extends Component {
 								key={id}
 								question={question}
 								answer={answer}
-								category={this.getCategoryType(categories, category)}
+								category={categories[category]}
 								difficulty={difficulty}
 								questionAction={this.questionAction(id)}
 							/>
