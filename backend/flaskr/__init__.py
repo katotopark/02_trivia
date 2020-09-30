@@ -1,4 +1,5 @@
 import os
+import math
 from flask import Flask, request, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -89,11 +90,13 @@ def create_app(test_config=None):
                 raise ErrorWithCode(404)
             questions_formatted = [question.format() for question in questions]
             categories_formatted = [category.format() for category in categories]
+            total_questions = len(questions_formatted)
             page = request.args.get("page", 1, type=int)
+            if page > math.ceil(total_questions / QUESTIONS_PER_PAGE):
+                raise ErrorWithCode(404)
             questions_paginated = paginate(
                 questions_formatted, page, QUESTIONS_PER_PAGE
             )
-            total_questions = len(questions_formatted)
             return jsonify(
                 {
                     "categories": categories_formatted,
@@ -145,16 +148,16 @@ def create_app(test_config=None):
     @app.route("/questions", methods=["POST"])
     def insert_question():
         data = request.get_json()
-        if not data:
-            raise ErrorWithCode(422)
-        else:
-            new_question = Question(
-                question=data.get("question"),
-                answer=data.get("answer"),
-                category=data.get("category"),
-                difficulty=data.get("difficulty"),
-            )
         try:
+            if not data:
+                raise ErrorWithCode(400)
+            else:
+                new_question = Question(
+                    question=data.get("question"),
+                    answer=data.get("answer"),
+                    category=data.get("category"),
+                    difficulty=data.get("difficulty"),
+                )
             new_question.insert()
             questions = Question.query.all()
             return jsonify(
@@ -165,6 +168,7 @@ def create_app(test_config=None):
                 }
             )
         except ErrorWithCode as e:
+            print(e)
             db.session.rollback()
             abort(e.code)
         finally:
@@ -258,12 +262,16 @@ def create_app(test_config=None):
     @app.route("/quizzes", methods=["POST"])
     def get_questions_by_category():
         data = request.get_json()
-        if not data:
-            raise ErrorWithCode(400)
-        else:
-            previous_questions = data.get("previous_questions", [])
-            quiz_category = data.get("category", {})
         try:
+            if not data:
+                raise ErrorWithCode(400)
+            else:
+                previous_questions = data.get("previous_questions", [])
+                quiz_category = data.get("category", {})
+            questions = []
+
+            if "id" not in quiz_category:
+                raise ErrorWithCode(422)
             if quiz_category["id"] == 0:
                 questions = Question.query.filter(
                     Question.id.notin_(previous_questions)
@@ -279,9 +287,9 @@ def create_app(test_config=None):
                 return jsonify({"question": new_question, "success": True})
             else:
                 return jsonify({"question": None, "success": True})
-        except:
+        except ErrorWithCode as e:
             db.session.rollback()
-            abort(404)
+            abort(e.code)
         finally:
             db.session.close()
 
@@ -333,7 +341,9 @@ def create_app(test_config=None):
     @app.errorhandler(422)
     def unprocessable(error):
         return (
-            jsonify({"error": error.code, "message": "unprocessable", success: False}),
+            jsonify(
+                {"error": error.code, "message": "unprocessable", "success": False}
+            ),
             422,
         )
 
@@ -344,7 +354,7 @@ def create_app(test_config=None):
                 {
                     "error": error.code,
                     "message": "internal server error",
-                    success: False,
+                    "success": False,
                 }
             ),
             500,
